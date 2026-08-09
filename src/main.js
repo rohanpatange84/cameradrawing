@@ -2,6 +2,7 @@
  * AirCanvas AI - Entry Point & Application Loop
  */
 
+import './style.css';
 import { HandTracker } from './handTracker.js';
 import { CanvasDrawer } from './canvasDrawer.js';
 import { ParticleSystem } from './particleSystem.js';
