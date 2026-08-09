@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AirCanvas AI - Draw with Finger Motion</title>
+  <meta name="description" content="Draw digitally on your screen using finger motion capturing via webcam powered by MediaPipe AI.">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- MediaPipe CDN Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <link rel="stylesheet" href="/src/style.css">
+</head>
+<body class="theme-midnight">
+  
+  <!-- Camera Access Loading Screen -->
+  <div id="loading-screen" class="loading-overlay">
+    <div class="loader-card">
+      <div class="spinner-ring"></div>
+      <div class="brand-badge">
+        <span class="pulse-dot"></span> AIR CANVAS AI
+      </div>
+      <h2>Starting Motion Engine...</h2>
+      <p>Please grant webcam permissions when prompted to enable finger motion tracking.</p>
+      <div id="camera-status-text" class="status-msg">Initializing camera...</div>
+      <button id="btn-start-camera" class="btn-primary">Enable Camera Access</button>
+    </div>
+  </div>
+
+  <!-- Main Viewport -->
+  <div class="app-container">
+    
+    <!-- Background Video Stream Layer -->
+    <div id="video-bg-container" class="video-bg-container mode-dimmed">
+      <video id="webcam-bg" autoplay playsinline muted></video>
+      <div class="bg-overlay-shade"></div>
+    </div>
+
+    <!-- Canvas Layers -->
+    <canvas id="drawing-canvas"></canvas>
+    <canvas id="particle-canvas"></canvas>
+
+    <!-- Finger Target Reticle / Cursor -->
+    <div id="finger-reticle" class="finger-reticle hidden">
+      <div class="reticle-ring"></div>
+      <div class="reticle-core"></div>
+      <span id="reticle-label" class="reticle-label">DRAWING</span>
+    </div>
+
+    <!-- Top HUD Navigation Header -->
+    <header class="top-hud">
+      <div class="hud-left">
+        <div class="logo">
+          <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"/>
+            <path d="M12 6a6 6 0 0 0-6 6c0 3.31 2.69 6 6 6s6-2.69 6-6a6 6 0 0 0-6-6z"/>
+            <circle cx="12" cy="12" r="2" fill="currentColor"/>
+          </svg>
+          <span class="logo-text">AIR<span class="highlight">CANVAS</span></span>
+          <span class="version-tag">AI 2.0</span>
+        </div>
+
+        <div class="badge-group">
+          <!-- Gesture Status Pill -->
+          <div id="gesture-badge" class="hud-pill gesture-pill state-searching">
+            <span class="status-indicator"></span>
+            <span id="gesture-name">SEARCHING HAND</span>
+          </div>
+
+          <!-- Performance Pill -->
+          <div class="hud-pill fps-pill">
+            <span class="label">FPS:</span>
+            <span id="fps-counter" class="val">--</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hud-right">
+        <!-- Quick Action Buttons -->
+        <button id="btn-undo" class="hud-btn" title="Undo (Ctrl+Z)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+          <span>Undo</span>
+        </button>
+
+        <button id="btn-redo" class="hud-btn" title="Redo (Ctrl+Y)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg>
+          <span>Redo</span>
+        </button>
+
+        <button id="btn-clear" class="hud-btn btn-danger" title="Clear Canvas">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          <span>Clear</span>
+        </button>
+
+        <button id="btn-save" class="hud-btn btn-action" title="Download Canvas PNG">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Save PNG</span>
+        </button>
+
+        <button id="btn-guide" class="hud-btn icon-only" title="Gesture Guide">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Floating Left Tool Palette -->
+    <aside class="side-panel left-panel">
+      <div class="panel-section">
+        <h3 class="section-title">Brushes</h3>
+        <div class="brush-grid">
+          <button class="brush-card active" data-brush="neon">
+            <span class="brush-icon">🔮</span>
+            <span class="brush-name">Neon Glow</span>
+          </button>
+          <button class="brush-card" data-brush="rainbow">
+            <span class="brush-icon">🌈</span>
+            <span class="brush-name">Rainbow</span>
+          </button>
+          <button class="brush-card" data-brush="laser">
+            <span class="brush-icon">⚡</span>
+            <span class="brush-name">Laser</span>
+          </button>
+          <button class="brush-card" data-brush="calligraphy">
+            <span class="brush-icon">🖋️</span>
+            <span class="brush-name">Calligraphy</span>
+          </button>
+          <button class="brush-card" data-brush="particles">
+            <span class="brush-icon">✨</span>
+            <span class="brush-name">Star Dust</span>
+          </button>
+          <button class="brush-card" data-brush="eraser">
+            <span class="brush-icon">🧽</span>
+            <span class="brush-name">Eraser</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="slider-header">
+          <h3 class="section-title">Brush Size</h3>
+          <span id="brush-size-val" class="slider-val">12px</span>
+        </div>
+        <input type="range" id="brush-size" min="2" max="60" value="12" class="cyber-slider">
+        <div class="brush-preview-box">
+          <div id="brush-preview-dot" class="preview-dot"></div>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-title">Color Palette</h3>
+        <div class="color-swatches">
+          <button class="swatch active" style="--swatch-color: #00f3ff;" data-color="#00f3ff"></button>
+          <button class="swatch" style="--swatch-color: #ff007f;" data-color="#ff007f"></button>
+          <button class="swatch" style="--swatch-color: #00ff87;" data-color="#00ff87"></button>
+          <button class="swatch" style="--swatch-color: #ffb700;" data-color="#ffb700"></button>
+          <button class="swatch" style="--swatch-color: #9d00ff;" data-color="#9d00ff"></button>
+          <button class="swatch" style="--swatch-color: #ffffff;" data-color="#ffffff"></button>
+          
+          <label class="swatch picker-swatch" title="Custom Color">
+            <input type="color" id="custom-color-picker" value="#00f3ff">
+            <span class="picker-icon">🎨</span>
+          </label>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Floating Right Control Panel -->
+    <aside class="side-panel right-panel">
+      <div class="panel-section">
+        <h3 class="section-title">Trigger Mode</h3>
+        <div class="mode-selector">
+          <button class="mode-btn active" data-mode="pointing">
+            <span class="mode-icon">☝️</span>
+            <div class="mode-info">
+              <span class="title">Point to Draw</span>
+              <span class="sub">Extend index finger to draw</span>
+            </div>
+          </button>
+          
+          <button class="mode-btn" data-mode="twoFingers">
+            <span class="mode-icon">✌️</span>
+            <div class="mode-info">
+              <span class="title">2-Finger Draw</span>
+              <span class="sub">Extend 2 fingers to draw</span>
+            </div>
+          </button>
+
+          <button class="mode-btn" data-mode="pinch">
+            <span class="mode-icon">🤏</span>
+            <div class="mode-info">
+              <span class="title">Pinch to Draw</span>
+              <span class="sub">Touch index & thumb tips</span>
+            </div>
+          </button>
+          
+          <button class="mode-btn" data-mode="continuous">
+            <span class="mode-icon">✍️</span>
+            <div class="mode-info">
+              <span class="title">Always Draw</span>
+              <span class="sub">Draws on any finger motion</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-title">Camera Feed Mode</h3>
+        <div class="toggle-group">
+          <button id="btn-cam-pip" class="toggle-btn active">
+            <span>PIP Preview Window</span>
+          </button>
+          <button id="btn-cam-bg" class="toggle-btn">
+            <span>Full Video Canvas</span>
+          </button>
+          <button id="btn-cam-mirror" class="toggle-btn active">
+            <span>Mirror Video (Selfie)</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-section">
+        <div class="slider-header">
+          <h3 class="section-title">Motion Smoothing</h3>
+          <span id="smoothing-val" class="slider-val">Smooth (0.65)</span>
+        </div>
+        <input type="range" id="smoothing-slider" min="0.1" max="0.9" step="0.05" value="0.65" class="cyber-slider">
+      </div>
+
+      <div class="panel-section">
+        <h3 class="section-title">Canvas Background</h3>
+        <div class="bg-selector">
+          <button class="bg-btn active" data-bg="midnight">Midnight</button>
+          <button class="bg-btn" data-bg="black">Pure Black</button>
+          <button class="bg-btn" data-bg="grid">Cyber Grid</button>
+          <button class="bg-btn" data-bg="transparent">Transparent</button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Picture-in-Picture Floating Camera Preview -->
+    <div id="pip-container" class="pip-window">
+      <div class="pip-header">
+        <span class="pip-title"><span class="live-dot"></span> WEBCAM FEED</span>
+        <button id="btn-toggle-pip-minimize" class="pip-min-btn">_</button>
+      </div>
+      <div class="pip-body">
+        <video id="webcam-pip" autoplay playsinline muted></video>
+        <canvas id="pip-hand-canvas"></canvas>
+      </div>
+    </div>
+
+    <!-- Gesture Guide Modal -->
+    <div id="modal-guide" class="modal-overlay hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>Gesture Control Guide</h2>
+          <button id="btn-close-guide" class="modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="guide-grid">
+            <div class="guide-item">
+              <div class="guide-icon">☝️</div>
+              <div class="guide-text">
+                <h4>1 Finger (Point)</h4>
+                <p>Extend index finger while folding others to draw lines smoothly on screen.</p>
+              </div>
+            </div>
+            
+            <div class="guide-item">
+              <div class="guide-icon">✌️</div>
+              <div class="guide-text">
+                <h4>2 Fingers (Hover)</h4>
+                <p>Extend index and middle finger to move cursor around without drawing.</p>
+              </div>
+            </div>
+
+            <div class="guide-item">
+              <div class="guide-icon">🤏</div>
+              <div class="guide-text">
+                <h4>Pinch Gesture</h4>
+                <p>Bring index fingertip and thumb tip together to initiate pen-down drawing.</p>
+              </div>
+            </div>
+
+            <div class="guide-item">
+              <div class="guide-icon">🖐️</div>
+              <div class="guide-text">
+                <h4>Open Palm</h4>
+                <p>Show open hand to pause drawing instantly.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button id="btn-got-it" class="btn-primary">Got it!</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
