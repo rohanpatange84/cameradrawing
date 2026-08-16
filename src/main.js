@@ -24,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvasDrawer = new CanvasDrawer(drawingCanvas);
   const particleSystem = new ParticleSystem(particleCanvas);
 
+  let handTracker = null;
+  let uiController = null;
   let isInitializing = false;
   let isInitialized = false;
 

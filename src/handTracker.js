@@ -117,14 +117,25 @@ export class HandTracker {
       audio: false
     });
 
-    this.videoElement.srcObject = stream;
+    if (this.videoElement) {
+      this.videoElement.muted = true;
+      this.videoElement.playsInline = true;
+      this.videoElement.setAttribute('playsinline', '');
+      this.videoElement.setAttribute('muted', '');
+      this.videoElement.srcObject = stream;
+    }
+
     if (this.pipVideoElement) {
+      this.pipVideoElement.muted = true;
+      this.pipVideoElement.playsInline = true;
+      this.pipVideoElement.setAttribute('playsinline', '');
+      this.pipVideoElement.setAttribute('muted', '');
       this.pipVideoElement.srcObject = stream;
     }
 
     // Play video streams
     await Promise.all([
-      this.videoElement.play().catch(e => console.warn('Video play warning:', e)),
+      this.videoElement ? this.videoElement.play().catch(e => console.warn('Video play warning:', e)) : Promise.resolve(),
       this.pipVideoElement ? this.pipVideoElement.play().catch(e => console.warn('PIP video play warning:', e)) : Promise.resolve()
     ]);
 
