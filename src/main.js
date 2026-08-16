@@ -24,10 +24,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const canvasDrawer = new CanvasDrawer(drawingCanvas);
   const particleSystem = new ParticleSystem(particleCanvas);
 
-  let uiController = null;
-  let handTracker = null;
+  let isInitializing = false;
+  let isInitialized = false;
 
   const initApp = async () => {
+    if (isInitialized || isInitializing) return;
+    isInitializing = true;
+    btnStartCamera.style.display = 'none';
+    cameraStatusText.textContent = 'Loading MediaPipe AI model...';
+
     try {
       handTracker = new HandTracker({
         videoElement: webcamBg,
@@ -44,7 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
           }
 
           if (data.isDetected) {
-            // Update drawing canvas
             if (data.isDrawing) {
               canvasDrawer.drawTo(data.cursorX, data.cursorY);
               particleSystem.emit(data.cursorX, data.cursorY, 2, true);
@@ -61,6 +65,8 @@ document.addEventListener('DOMContentLoaded', () => {
       uiController = new UIController(handTracker, canvasDrawer, particleSystem);
 
       await handTracker.init();
+      isInitialized = true;
+      isInitializing = false;
 
       // Fade out loading screen smoothly
       loadingScreen.style.opacity = '0';
@@ -70,18 +76,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     } catch (err) {
       console.error('Initialization error:', err);
+      isInitializing = false;
       cameraStatusText.textContent = `Initialization failed: ${err.message || 'Camera permission denied.'}`;
       btnStartCamera.style.display = 'inline-block';
+      btnStartCamera.textContent = 'Enable Camera Access';
     }
   };
 
   btnStartCamera.addEventListener('click', () => {
-    btnStartCamera.style.display = 'none';
-    cameraStatusText.textContent = 'Retrying camera access...';
     initApp();
   });
 
-  // Auto start initialization on load
+  // Attempt auto initialization on page load
   initApp();
 
   // Particle Animation Loop

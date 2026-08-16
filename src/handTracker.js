@@ -37,34 +37,37 @@ export class HandTracker {
     this.pipCtx = this.pipCanvasElement ? this.pipCanvasElement.getContext('2d') : null;
   }
 
-  async getHandsClass() {
-    if (window.Hands) return window.Hands;
-    for (let i = 0; i < 50; i++) {
-      if (window.Hands) return window.Hands;
-      await new Promise(r => setTimeout(r, 100));
-    }
-    try {
-      const mod = await import('@mediapipe/hands');
-      return window.Hands || mod.Hands || (mod.default && mod.default.Hands) || mod;
-    } catch (e) {
-      if (window.Hands) return window.Hands;
-      throw new Error('MediaPipe Hands script failed to load.');
-    }
+  async loadScript(url) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[src="${url}"]`);
+      if (existing) {
+        if (window.Hands) return resolve();
+        existing.addEventListener('load', () => resolve());
+        existing.addEventListener('error', () => reject(new Error(`Failed to load ${url}`)));
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = url;
+      script.crossOrigin = 'anonymous';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Failed to load ${url}`));
+      document.head.appendChild(script);
+    });
   }
 
-  async getCameraClass() {
-    if (window.Camera) return window.Camera;
-    for (let i = 0; i < 50; i++) {
-      if (window.Camera) return window.Camera;
+  async getHandsClass() {
+    if (window.Hands) return window.Hands;
+    try {
+      await this.loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js');
+    } catch (e) {
+      console.warn('MediaPipe CDN script injection warning:', e);
+    }
+    for (let i = 0; i < 30; i++) {
+      if (window.Hands) return window.Hands;
       await new Promise(r => setTimeout(r, 100));
     }
-    try {
-      const mod = await import('@mediapipe/camera_utils');
-      return window.Camera || mod.Camera || (mod.default && mod.default.Camera) || mod;
-    } catch (e) {
-      if (window.Camera) return window.Camera;
-      throw new Error('MediaPipe CameraUtils script failed to load.');
-    }
+    if (window.Hands) return window.Hands;
+    throw new Error('MediaPipe Hands AI model script could not be loaded.');
   }
 
   async init() {
@@ -99,15 +102,19 @@ export class HandTracker {
   }
 
   async startCamera() {
-    const CameraClass = await this.getCameraClass();
-    
-    // Use navigator.mediaDevices getUserMedia
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Webcam access is not supported by your browser or secure context (HTTPS required).');
+    }
+
+    this.onStatusCallback('Prompting for webcam permission...');
+
     const stream = await navigator.mediaDevices.getUserMedia({
       video: {
         width: { ideal: 1280 },
         height: { ideal: 720 },
         facingMode: 'user'
-      }
+      },
+      audio: false
     });
 
     this.videoElement.srcObject = stream;
@@ -115,17 +122,33 @@ export class HandTracker {
       this.pipVideoElement.srcObject = stream;
     }
 
-    this.camera = new CameraClass(this.videoElement, {
-      onFrame: async () => {
-        if (this.videoElement && this.videoElement.readyState >= 2) {
-          await this.hands.send({ image: this.videoElement });
-        }
-      },
-      width: 1280,
-      height: 720
-    });
+    // Play video streams
+    await Promise.all([
+      this.videoElement.play().catch(e => console.warn('Video play warning:', e)),
+      this.pipVideoElement ? this.pipVideoElement.play().catch(e => console.warn('PIP video play warning:', e)) : Promise.resolve()
+    ]);
 
-    await this.camera.start();
+    // Send frames to MediaPipe Hands model using requestAnimationFrame
+    this.isCameraRunning = true;
+    let isProcessing = false;
+
+    const processFrame = async () => {
+      if (!this.isCameraRunning) return;
+
+      if (!isProcessing && this.videoElement && this.videoElement.readyState >= 2 && this.hands) {
+        isProcessing = true;
+        try {
+          await this.hands.send({ image: this.videoElement });
+        } catch (e) {
+          // Suppress minor processing warnings during tab switch
+        } finally {
+          isProcessing = false;
+        }
+      }
+      requestAnimationFrame(processFrame);
+    };
+
+    requestAnimationFrame(processFrame);
   }
 
   setTriggerMode(mode) {
