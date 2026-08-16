@@ -37,15 +37,44 @@ export class HandTracker {
     this.pipCtx = this.pipCanvasElement ? this.pipCanvasElement.getContext('2d') : null;
   }
 
+  async getHandsClass() {
+    if (window.Hands) return window.Hands;
+    for (let i = 0; i < 50; i++) {
+      if (window.Hands) return window.Hands;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    try {
+      const mod = await import('@mediapipe/hands');
+      return window.Hands || mod.Hands || (mod.default && mod.default.Hands) || mod;
+    } catch (e) {
+      if (window.Hands) return window.Hands;
+      throw new Error('MediaPipe Hands script failed to load.');
+    }
+  }
+
+  async getCameraClass() {
+    if (window.Camera) return window.Camera;
+    for (let i = 0; i < 50; i++) {
+      if (window.Camera) return window.Camera;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    try {
+      const mod = await import('@mediapipe/camera_utils');
+      return window.Camera || mod.Camera || (mod.default && mod.default.Camera) || mod;
+    } catch (e) {
+      if (window.Camera) return window.Camera;
+      throw new Error('MediaPipe CameraUtils script failed to load.');
+    }
+  }
+
   async init() {
     this.onStatusCallback('Loading MediaPipe AI model...');
 
     try {
-      // Initialize MediaPipe Hands class (global Hands from CDN script or window.Hands)
-      const HandsClass = window.Hands || (await import('@mediapipe/hands')).Hands;
+      const HandsClass = await this.getHandsClass();
       
       this.hands = new HandsClass({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/${file}`
       });
 
       this.hands.setOptions({
@@ -70,7 +99,7 @@ export class HandTracker {
   }
 
   async startCamera() {
-    const CameraClass = window.Camera || (await import('@mediapipe/camera_utils')).Camera;
+    const CameraClass = await this.getCameraClass();
     
     // Use navigator.mediaDevices getUserMedia
     const stream = await navigator.mediaDevices.getUserMedia({
